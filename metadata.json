@@ -1,0 +1,5 @@
+{
+  "name": "PrismaRender",
+  "description": "Upload a static architectural image, customize the scene mood and elements, and generate dynamic video or high-quality renders.",
+  "requestFramePermissions": []
+}
