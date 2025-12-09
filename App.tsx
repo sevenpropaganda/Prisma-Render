@@ -1,3 +1,4 @@
+
 import React, { useState, useEffect, useCallback } from 'react';
 import { generateVideoFromImage, renderArchitecturalImage } from './services/geminiService';
 import { fileToBase64, base64ToFile } from './utils/fileUtils';
@@ -111,9 +112,13 @@ const App: React.FC = () => {
       } catch (e) {
         console.error("Error opening key selector:", e);
       }
+    } else {
+      console.warn("AI Studio API Key selector not found in this environment.");
     }
-    // Optimistically assume success to proceed immediately as per instructions
+    // Always set to true to allow the user to proceed/retry. 
+    // If the key is still invalid, the generation call will fail gracefully later.
     setHasApiKey(true);
+    setError(null); 
   };
 
   // Load Saved Characters

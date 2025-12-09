@@ -5,12 +5,11 @@ import type { AspectRatio } from "../types";
 const POLLING_INTERVAL_MS = 10000; // Increased to 10s to ensure operation completion and avoid rate limits
 
 const getAiClient = () => {
-  if (!process.env.API_KEY) {
-    throw new Error("API_KEY environment variable is not set. Please select an API key.");
-  }
-  // Ensure API Key is clean (remove quotes/whitespace) to prevent authentication errors
-  const cleanKey = process.env.API_KEY.replace(/["']/g, "").trim();
-  return new GoogleGenAI({ apiKey: cleanKey });
+  // Use the environment variable if present, otherwise default to empty string.
+  // We do NOT throw an error here to allow the AI Studio environment to inject the key
+  // or handle the request interception gracefully.
+  const apiKey = process.env.API_KEY ? process.env.API_KEY.replace(/["']/g, "").trim() : "";
+  return new GoogleGenAI({ apiKey });
 };
 
 export const generateVideoFromImage = async (
@@ -65,25 +64,27 @@ export const generateVideoFromImage = async (
     throw new Error("Video generation failed. The model completed the operation but returned no video. This may be due to safety filters blocking the content.");
   }
   
-  // Clean API Key logic
+  // Clean API Key logic for download URL
   const rawKey = process.env.API_KEY || "";
   const cleanKey = rawKey.replace(/["']/g, "").trim();
   
-  if (!cleanKey) {
-      throw new Error("API Key is missing or invalid.");
-  }
+  // Note: For download, we attempt to use the key if available, but some proxies might handle it automatically.
+  // We won't block purely on missing key here to allow fallback behaviors.
 
   try {
     const url = new URL(downloadLink);
-    // Append key to URL parameters as per documentation
-    url.searchParams.set("key", cleanKey);
+    if (cleanKey) {
+        // Append key to URL parameters as per documentation
+        url.searchParams.set("key", cleanKey);
+    }
     
     // Additionally pass as header to ensure acceptance if URL param parsing is strict/failing
-    const response = await fetch(url.toString(), {
-        headers: {
-            'x-goog-api-key': cleanKey
-        }
-    });
+    const headers: Record<string, string> = {};
+    if (cleanKey) {
+        headers['x-goog-api-key'] = cleanKey;
+    }
+
+    const response = await fetch(url.toString(), { headers });
     
     if (!response.ok) {
       const errorBody = await response.text();
