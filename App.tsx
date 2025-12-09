@@ -1,4 +1,3 @@
-
 import React, { useState, useEffect, useCallback } from 'react';
 import { generateVideoFromImage, renderArchitecturalImage } from './services/geminiService';
 import { fileToBase64, base64ToFile } from './utils/fileUtils';
@@ -782,7 +781,12 @@ const App: React.FC = () => {
   return (
     <div className="min-h-screen bg-gray-950 text-gray-100 font-sans selection:bg-teal-500 selection:text-white">
       <main className="container mx-auto p-4 md:p-8 max-w-7xl">
-        <Header language={language} setLanguage={setLanguage} />
+        <Header 
+          language={language} 
+          setLanguage={setLanguage} 
+          hasApiKey={hasApiKey}
+          onEditKey={handleSelectKey}
+        />
         
         <div className="mt-8 grid grid-cols-1 lg:grid-cols-12 gap-8">
           

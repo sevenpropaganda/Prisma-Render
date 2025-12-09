@@ -109,6 +109,9 @@ export const translations = {
     apiKeyDesc: 'Para gerar vídeos usando o modelo Veo, você precisa selecionar uma chave de API associada a um projeto com faturamento ativado.',
     selectKey: 'Selecionar Chave de API',
     billingInfo: 'Ao continuar, você concorda com os termos de faturamento.',
+    apiKeyStatus: 'Configuração da Chave API (Clique para alterar)',
+    apiKeyActive: 'Chave API Ativa',
+    apiKeyInactive: 'Chave API Inativa/Ausente',
     
     // Options Translations (Mappings)
     'Men': 'Homens',
@@ -249,6 +252,9 @@ export const translations = {
     apiKeyDesc: 'To generate videos using the Veo model, you need to select an API key associated with a project that has billing enabled.',
     selectKey: 'Select API Key',
     billingInfo: 'By continuing, you agree to the associated billing terms.',
+    apiKeyStatus: 'API Key Configuration (Click to change)',
+    apiKeyActive: 'API Key Active',
+    apiKeyInactive: 'API Key Inactive/Missing',
     
     // Mappings (Same as key)
     'Men': 'Men',
@@ -389,6 +395,9 @@ export const translations = {
     apiKeyDesc: 'Para generar vídeos usando el modelo Veo, debe seleccionar una clave API asociada a un proyecto con facturación habilitada.',
     selectKey: 'Seleccionar Clave API',
     billingInfo: 'Al continuar, acepta los términos de facturación asociados.',
+    apiKeyStatus: 'Configuración de Clave API (Clic para cambiar)',
+    apiKeyActive: 'Clave API Activa',
+    apiKeyInactive: 'Clave API Inactiva/Falta',
 
     // Mappings
     'Men': 'Hombres',
