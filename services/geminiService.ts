@@ -2,15 +2,43 @@
 import { GoogleGenAI } from "@google/genai";
 import type { AspectRatio } from "../types";
 
-const POLLING_INTERVAL_MS = 10000; // Increased to 10s to ensure operation completion and avoid rate limits
+const POLLING_INTERVAL_MS = 10000; // 10s polling interval
 
 const getAiClient = () => {
-  // Use the environment variable if present, otherwise default to empty string.
-  // We do NOT throw an error here to allow the AI Studio environment to inject the key
-  // or handle the request interception gracefully.
   const apiKey = process.env.API_KEY ? process.env.API_KEY.replace(/["']/g, "").trim() : "";
   return new GoogleGenAI({ apiKey });
 };
+
+// Helper function to wait
+const wait = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
+
+// Helper function for Exponential Backoff Retry
+async function retryWithBackoff<T>(
+  operation: () => Promise<T>, 
+  retries: number = 5, 
+  delay: number = 2000,
+  operationName: string = "Operation"
+): Promise<T> {
+  try {
+    return await operation();
+  } catch (error: any) {
+    // Check if error is 503 (Service Unavailable / Overloaded) or 429 (Too Many Requests)
+    const isOverloaded = 
+      error.status === 503 || 
+      error.code === 503 || 
+      (error.message && (error.message.includes('503') || error.message.includes('overloaded') || error.message.includes('UNAVAILABLE')));
+
+    if (retries > 0 && isOverloaded) {
+      console.warn(`${operationName} failed (Model Overloaded). Retrying in ${delay/1000}s... (${retries} attempts left)`);
+      await wait(delay);
+      // Retry with double the delay (Exponential Backoff)
+      return retryWithBackoff(operation, retries - 1, delay * 2, operationName);
+    }
+    
+    // If not a 503 or no retries left, throw the error
+    throw error;
+  }
+}
 
 export const generateVideoFromImage = async (
   prompt: string,
@@ -20,37 +48,53 @@ export const generateVideoFromImage = async (
 ): Promise<string> => {
   const ai = getAiClient();
 
-  // Veo strictly requires 16:9 or 9:16. Ensure we pass valid values.
   let validAspectRatio = aspectRatio;
   if (aspectRatio !== '16:9' && aspectRatio !== '9:16') {
-     // Default fallback if invalid aspect ratio is somehow passed
      validAspectRatio = '16:9'; 
   }
 
   console.log("Starting video generation...");
-  let operation = await ai.models.generateVideos({
-    model: 'veo-3.1-fast-generate-preview',
-    prompt: prompt,
-    image: {
-      imageBytes: imageBase64,
-      mimeType: mimeType,
+
+  // Wrap the initial generation request in retry logic
+  let operation = await retryWithBackoff(
+    async () => {
+      return await ai.models.generateVideos({
+        model: 'veo-3.1-fast-generate-preview',
+        prompt: prompt,
+        image: {
+          imageBytes: imageBase64,
+          mimeType: mimeType,
+        },
+        config: {
+          numberOfVideos: 1,
+          resolution: '720p',
+          aspectRatio: validAspectRatio,
+        }
+      });
     },
-    config: {
-      numberOfVideos: 1,
-      resolution: '720p',
-      aspectRatio: validAspectRatio,
-    }
-  });
+    5, // 5 Retries
+    3000, // Start with 3s delay
+    "Video Generation Request"
+  );
 
   console.log("Video generation operation started. Polling for completion...");
 
   while (!operation.done) {
-    await new Promise(resolve => setTimeout(resolve, POLLING_INTERVAL_MS));
-    operation = await ai.operations.getVideosOperation({ operation: operation });
+    await wait(POLLING_INTERVAL_MS);
+    
+    // Wrap the polling request in retry logic as well
+    operation = await retryWithBackoff(
+      async () => {
+        return await ai.operations.getVideosOperation({ operation: operation });
+      },
+      5, 
+      3000,
+      "Polling Status"
+    );
+    
     console.log("Polling...", operation.metadata);
   }
 
-  // Check for API errors explicitly
   if (operation.error) {
     const errorMsg = operation.error.message || JSON.stringify(operation.error);
     throw new Error(`Video generation failed: ${errorMsg}`);
@@ -59,36 +103,34 @@ export const generateVideoFromImage = async (
   const downloadLink = operation.response?.generatedVideos?.[0]?.video?.uri;
 
   if (!downloadLink) {
-    // Log the operation object to console for debugging
     console.error("Video Generation Operation completed without video data:", JSON.stringify(operation, null, 2));
-    throw new Error("Video generation failed. The model completed the operation but returned no video. This may be due to safety filters blocking the content.");
+    throw new Error("Video generation failed. The model completed the operation but returned no video.");
   }
   
-  // Clean API Key logic for download URL
   const rawKey = process.env.API_KEY || "";
   const cleanKey = rawKey.replace(/["']/g, "").trim();
   
-  // Note: For download, we attempt to use the key if available, but some proxies might handle it automatically.
-  // We won't block purely on missing key here to allow fallback behaviors.
-
   try {
     const url = new URL(downloadLink);
     if (cleanKey) {
-        // Append key to URL parameters as per documentation
         url.searchParams.set("key", cleanKey);
     }
     
-    // Additionally pass as header to ensure acceptance if URL param parsing is strict/failing
     const headers: Record<string, string> = {};
     if (cleanKey) {
         headers['x-goog-api-key'] = cleanKey;
     }
 
-    const response = await fetch(url.toString(), { headers });
+    // Wrap download in retry logic too, just in case
+    const response = await retryWithBackoff(
+        async () => await fetch(url.toString(), { headers }),
+        3,
+        1000,
+        "Video Download"
+    );
     
     if (!response.ok) {
       const errorBody = await response.text();
-      // Try to parse JSON error for cleaner message
       try {
           const errJson = JSON.parse(errorBody);
           if (errJson.error && errJson.error.message) {
@@ -113,11 +155,10 @@ export const renderArchitecturalImage = async (
   imageBase64: string,
   mimeType: string,
   aspectRatio: AspectRatio,
-  referenceImages: string[] = [] // New parameter for additional reference images
+  referenceImages: string[] = []
 ): Promise<string> => {
   const ai = getAiClient();
 
-  // Construct parts: Main Image, Reference Images, Text Prompt
   const parts: any[] = [
     {
       inlineData: {
@@ -127,33 +168,39 @@ export const renderArchitecturalImage = async (
     }
   ];
 
-  // Add reference images
   referenceImages.forEach((refBase64) => {
     parts.push({
       inlineData: {
         data: refBase64,
-        mimeType: "image/png", // Assuming PNG for simplicity/conversion
+        mimeType: "image/png", 
       },
     });
   });
 
-  // Add text prompt last
   parts.push({
     text: prompt,
   });
 
-  const response = await ai.models.generateContent({
-    model: 'gemini-3-pro-image-preview',
-    contents: {
-      parts: parts,
+  // Wrap image generation in retry logic
+  const response = await retryWithBackoff(
+    async () => {
+      return await ai.models.generateContent({
+        model: 'gemini-3-pro-image-preview',
+        contents: {
+          parts: parts,
+        },
+        config: {
+          imageConfig: {
+            aspectRatio: aspectRatio,
+            imageSize: '2K',
+          },
+        },
+      });
     },
-    config: {
-      imageConfig: {
-        aspectRatio: aspectRatio,
-        imageSize: '2K',
-      },
-    },
-  });
+    3, // 3 retries for images (usually faster)
+    2000,
+    "Image Generation Request"
+  );
 
   for (const part of response.candidates?.[0]?.content?.parts || []) {
     if (part.inlineData) {

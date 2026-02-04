@@ -31,17 +31,25 @@ export interface SavedCharacter {
   name: string;
   type: ElementType;
   description: string;
+  referenceImage?: string; // Optional reference image
+}
+
+export interface GlobalReference {
+  id: string;
+  url: string; // Base64
 }
 
 export interface RenderResult {
   id: string;
-  url: string;
+  url: string | null; // Null if pending
   type: GenerationMode;
   timestamp: number;
-  thumbnail?: string;
+  thumbnail?: string; // Can be the input image for pending state
+  status: 'pending' | 'completed' | 'failed';
 }
 
-export const PEOPLE_OPTIONS = ['Men', 'Women', 'Children', 'Elderly', 'Business People', 'Cyclist'];
+// Changed to singular
+export const PEOPLE_OPTIONS = ['Man', 'Woman', 'Child', 'Elderly', 'Business Person', 'Cyclist'];
 export const ANIMAL_OPTIONS = ['Dog', 'Cat', 'Birds', 'Deer', 'Horse'];
 export const VEHICLE_OPTIONS = ['Luxury Car', 'SUV', 'Sports Car', 'Motorcycle', 'Bus', 'Truck'];
 export const PLANT_OPTIONS = ['Tree', 'Bush', 'Flower Bed', 'Grass', 'Potted Plant', 'Hanging Pot', 'Hedge', 'Palm Tree'];

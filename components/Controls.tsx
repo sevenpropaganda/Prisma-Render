@@ -15,7 +15,8 @@ import {
   LIGHTING_OPTIONS,
   FURNITURE_OPTIONS,
   Pose,
-  LightingPosition
+  LightingPosition,
+  GlobalReference
 } from '../types';
 import { getTranslation } from '../utils/translations';
 
@@ -54,7 +55,7 @@ interface ControlsProps {
   setCustomDuration: (val: string) => void;
 
   sceneElements: SceneElement[];
-  onAddElement: (type: ElementType, subtype: string) => void;
+  onAddElement: (type: ElementType, subtype: string, initialPos?: {x: number, y: number}) => void;
   onRemoveElement: (id: string) => void;
   onUpdateElementReferenceImage: (id: string, file: File) => void;
   onRemoveElementReferenceImage: (id: string) => void;
@@ -64,8 +65,14 @@ interface ControlsProps {
 
   // Library Props
   savedCharacters: SavedCharacter[];
-  onSaveCharacter: (name: string, type: ElementType, description: string) => void;
+  onSaveCharacter: (name: string, type: ElementType, description: string, referenceImage?: string) => void;
   onDeleteSavedCharacter: (id: string) => void;
+
+  // Reference Props
+  globalReferences: GlobalReference[];
+  onAddGlobalReference: (files: FileList) => void;
+  onDeleteGlobalReference: (id: string) => void;
+  onSelectGlobalReferenceForElement: (elementId: string, refUrl: string) => void;
   
   // Selection Props
   selectedElementId: string | null;
@@ -77,18 +84,24 @@ interface ControlsProps {
 const moods: Mood[] = ['Original', 'Day', 'Sunny', 'Summer', 'Spring', 'Dusk', 'Night', 'Starry Night', 'Rainy'];
 
 const ObjectManager: React.FC<{
-  onAdd: (type: ElementType, desc: string) => void;
+  onAdd: (type: ElementType, desc: string, initialPos?: {x: number, y: number}) => void;
   savedCharacters: SavedCharacter[];
-  onSave: (name: string, type: ElementType, description: string) => void;
+  onSave: (name: string, type: ElementType, description: string, referenceImage?: string) => void;
   onDeleteSaved: (id: string) => void;
   language: Language;
-}> = ({ onAdd, savedCharacters, onSave, onDeleteSaved, language }) => {
+  // Reference Props
+  globalReferences: GlobalReference[];
+  onAddGlobalReference: (files: FileList) => void;
+  onDeleteGlobalReference: (id: string) => void;
+}> = ({ onAdd, savedCharacters, onSave, onDeleteSaved, language, globalReferences, onAddGlobalReference, onDeleteGlobalReference }) => {
   const t = (key: string) => getTranslation(language, key);
-  const [activeTab, setActiveTab] = useState<'preset' | 'custom' | 'library'>('preset');
+  const [activeTab, setActiveTab] = useState<'preset' | 'custom' | 'library' | 'references'>('preset');
   const [selectedType, setSelectedType] = useState<ElementType>('person');
+  const refFileInput = useRef<HTMLInputElement>(null);
   
   // Preset State
   const [selectedPreset, setSelectedPreset] = useState(PEOPLE_OPTIONS[0]);
+  const [quantity, setQuantity] = useState(1);
 
   // Custom State
   const [customDesc, setCustomDesc] = useState('');
@@ -111,7 +124,19 @@ const ObjectManager: React.FC<{
   };
 
   const handleAddPreset = () => {
-    onAdd(selectedType, selectedPreset);
+    // If person type, handle quantity logic
+    if (selectedType === 'person' && quantity > 1) {
+        for (let i = 0; i < quantity; i++) {
+            // Offset logic: Center is 50. 
+            // If 2 people: 48, 52
+            // If 3 people: 46, 50, 54
+            const offset = (i - (quantity - 1) / 2) * 4; // 4% gap
+            onAdd(selectedType, selectedPreset, { x: 50 + offset, y: 50 });
+        }
+    } else {
+        onAdd(selectedType, selectedPreset);
+    }
+    setQuantity(1); // Reset quantity after add
   };
 
   const handleAddCustom = () => {
@@ -133,6 +158,14 @@ const ObjectManager: React.FC<{
     if (char) {
       onAdd(char.type, char.description);
     }
+  };
+
+  const handleRefUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+      if (e.target.files && e.target.files.length > 0) {
+          onAddGlobalReference(e.target.files);
+          // Clear input
+          e.target.value = '';
+      }
   };
 
   const filteredLibrary = savedCharacters.filter(c => c.type === selectedType);
@@ -166,23 +199,44 @@ const ObjectManager: React.FC<{
       </div>
 
       {/* Tabs */}
-      <div className="flex border-b border-gray-700">
-        <button onClick={() => setActiveTab('preset')} className={`px-3 py-1 text-xs font-medium border-b-2 transition-colors ${activeTab === 'preset' ? 'border-teal-500 text-teal-400' : 'border-transparent text-gray-500'}`}>{t('presets')}</button>
-        <button onClick={() => setActiveTab('custom')} className={`px-3 py-1 text-xs font-medium border-b-2 transition-colors ${activeTab === 'custom' ? 'border-teal-500 text-teal-400' : 'border-transparent text-gray-500'}`}>{t('custom')}</button>
-        <button onClick={() => setActiveTab('library')} className={`px-3 py-1 text-xs font-medium border-b-2 transition-colors ${activeTab === 'library' ? 'border-teal-500 text-teal-400' : 'border-transparent text-gray-500'}`}>{t('library')} ({filteredLibrary.length})</button>
+      <div className="flex border-b border-gray-700 overflow-x-auto">
+        <button onClick={() => setActiveTab('preset')} className={`px-3 py-1 text-xs font-medium border-b-2 transition-colors whitespace-nowrap ${activeTab === 'preset' ? 'border-teal-500 text-teal-400' : 'border-transparent text-gray-500'}`}>{t('presets')}</button>
+        <button onClick={() => setActiveTab('custom')} className={`px-3 py-1 text-xs font-medium border-b-2 transition-colors whitespace-nowrap ${activeTab === 'custom' ? 'border-teal-500 text-teal-400' : 'border-transparent text-gray-500'}`}>{t('custom')}</button>
+        <button onClick={() => setActiveTab('library')} className={`px-3 py-1 text-xs font-medium border-b-2 transition-colors whitespace-nowrap ${activeTab === 'library' ? 'border-teal-500 text-teal-400' : 'border-transparent text-gray-500'}`}>{t('library')} ({filteredLibrary.length})</button>
+        <button onClick={() => setActiveTab('references')} className={`px-3 py-1 text-xs font-medium border-b-2 transition-colors whitespace-nowrap ${activeTab === 'references' ? 'border-teal-500 text-teal-400' : 'border-transparent text-gray-500'}`}>{t('references')} ({globalReferences.length})</button>
       </div>
 
       {/* Preset Tab */}
       {activeTab === 'preset' && (
-        <div className="flex gap-2">
-          <select 
-            value={selectedPreset}
-            onChange={(e) => setSelectedPreset(e.target.value)}
-            className="flex-1 bg-gray-800 border border-gray-600 rounded-md text-sm px-2 text-gray-200"
-          >
-            {getOptions(selectedType).map(o => <option key={o} value={o}>{t(o)}</option>)}
-          </select>
-          <button onClick={handleAddPreset} className="bg-teal-600 hover:bg-teal-500 text-white px-3 py-1.5 rounded-md text-sm font-bold">+</button>
+        <div className="space-y-2">
+            <div className="flex gap-2">
+            <select 
+                value={selectedPreset}
+                onChange={(e) => setSelectedPreset(e.target.value)}
+                className="flex-1 bg-gray-800 border border-gray-600 rounded-md text-sm px-2 text-gray-200"
+            >
+                {getOptions(selectedType).map(o => <option key={o} value={o}>{t(o)}</option>)}
+            </select>
+            <button onClick={handleAddPreset} className="bg-teal-600 hover:bg-teal-500 text-white px-3 py-1.5 rounded-md text-sm font-bold">+</button>
+            </div>
+            
+            {/* Quantity Input for People */}
+            {selectedType === 'person' && (
+                <div className="flex items-center gap-2 bg-gray-800/50 p-2 rounded border border-gray-700">
+                    <label className="text-xs text-gray-400">{t('quantity')}:</label>
+                    <input 
+                        type="number" 
+                        min="1" 
+                        max="10" 
+                        value={quantity}
+                        onChange={(e) => setQuantity(Math.max(1, parseInt(e.target.value) || 1))}
+                        className="w-14 bg-gray-900 border border-gray-600 rounded px-2 py-1 text-xs text-white"
+                    />
+                    <span className="text-[10px] text-gray-500 italic flex-1 text-right">
+                        {quantity > 1 ? t('multiplePinsHint') : ''}
+                    </span>
+                </div>
+            )}
         </div>
       )}
 
@@ -246,6 +300,46 @@ const ObjectManager: React.FC<{
           )}
         </div>
       )}
+
+      {/* References Tab */}
+      {activeTab === 'references' && (
+          <div className="space-y-3">
+              <button 
+                  onClick={() => refFileInput.current?.click()}
+                  className="w-full py-2 border border-dashed border-gray-500 hover:border-teal-500 rounded-md text-xs text-gray-400 hover:text-teal-400 transition-colors"
+              >
+                  {t('uploadMultiple')}
+              </button>
+              <input 
+                  type="file" 
+                  multiple 
+                  accept="image/*" 
+                  className="hidden" 
+                  ref={refFileInput} 
+                  onChange={handleRefUpload}
+              />
+
+              {globalReferences.length === 0 ? (
+                  <p className="text-xs text-gray-500 text-center py-2">{t('noReferences')}</p>
+              ) : (
+                  <div className="grid grid-cols-4 gap-2 max-h-32 overflow-y-auto custom-scrollbar">
+                      {globalReferences.map(ref => (
+                          <div key={ref.id} className="relative group aspect-square">
+                              <img src={ref.url} alt="Reference" className="w-full h-full object-cover rounded border border-gray-700" />
+                              <button 
+                                  onClick={() => onDeleteGlobalReference(ref.id)}
+                                  className="absolute top-0 right-0 bg-red-600 text-white p-0.5 rounded-bl opacity-0 group-hover:opacity-100 transition-opacity"
+                              >
+                                  <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                                  </svg>
+                              </button>
+                          </div>
+                      ))}
+                  </div>
+              )}
+          </div>
+      )}
     </div>
   );
 };
@@ -260,9 +354,31 @@ const ElementItem: React.FC<{
     onUpdateTemperature: (id: string, temp: number) => void;
     onUpdatePose: (id: string, pose: Pose) => void;
     onUpdateLightingPosition: (id: string, pos: LightingPosition) => void;
+    globalReferences: GlobalReference[];
+    onSelectGlobalReference: (elId: string, url: string) => void;
+    savedCharacters: SavedCharacter[];
+    onSaveCharacter: (name: string, type: ElementType, description: string, referenceImage?: string) => void;
     t: (key: string) => string;
-}> = ({ element, isSelected, onSelect, onRemove, onUpdateImage, onRemoveImage, onUpdateTemperature, onUpdatePose, onUpdateLightingPosition, t }) => {
+}> = ({ element, isSelected, onSelect, onRemove, onUpdateImage, onRemoveImage, onUpdateTemperature, onUpdatePose, onUpdateLightingPosition, globalReferences, onSelectGlobalReference, savedCharacters, onSaveCharacter, t }) => {
     const fileInputRef = useRef<HTMLInputElement>(null);
+    const [showRefMenu, setShowRefMenu] = useState(false);
+
+    // Check if this specific configuration is already saved
+    // We check type, description (subtype), and reference image equality
+    const isSaved = savedCharacters.some(c => 
+        c.type === element.type && 
+        c.description === element.subtype && 
+        c.referenceImage === element.referenceImage
+    );
+
+    const handleQuickSave = (e: React.MouseEvent) => {
+        e.stopPropagation();
+        if (isSaved) return;
+        
+        // Auto-generate name based on subtype and date
+        const name = `${element.subtype} ${new Date().toLocaleTimeString()}`;
+        onSaveCharacter(name, element.type, element.subtype, element.referenceImage);
+    };
 
     const getIcon = (type: string) => {
         const iconClass = "w-4 h-4";
@@ -380,37 +496,77 @@ const ElementItem: React.FC<{
                 )}
 
                 {/* Reference Image Control */}
-                {element.referenceImage ? (
-                    <div className="relative group/image">
-                        <img 
-                            src={element.referenceImage} 
-                            alt="Ref" 
-                            className="w-6 h-6 object-cover rounded border border-gray-500 cursor-pointer"
-                            onClick={() => fileInputRef.current?.click()}
-                            title={t('replaceReference')}
-                        />
+                <div className="relative group/image">
+                    {element.referenceImage ? (
+                        <>
+                            <img 
+                                src={element.referenceImage} 
+                                alt="Ref" 
+                                className="w-6 h-6 object-cover rounded border border-gray-500 cursor-pointer"
+                                onClick={() => setShowRefMenu(!showRefMenu)}
+                                title={t('replaceReference')}
+                            />
+                            <button
+                                onClick={(e) => {
+                                    e.stopPropagation();
+                                    onRemoveImage(element.id);
+                                }}
+                                className="absolute -top-1.5 -right-1.5 bg-red-500 text-white rounded-full w-3 h-3 flex items-center justify-center text-[8px] opacity-0 group-hover/image:opacity-100 transition-opacity"
+                                title={t('removeReference')}
+                            >
+                                ✕
+                            </button>
+                        </>
+                    ) : (
                         <button
-                            onClick={(e) => {
-                                e.stopPropagation();
-                                onRemoveImage(element.id);
-                            }}
-                            className="absolute -top-1.5 -right-1.5 bg-red-500 text-white rounded-full w-3 h-3 flex items-center justify-center text-[8px] opacity-0 group-hover/image:opacity-100 transition-opacity"
-                            title={t('removeReference')}
+                            onClick={() => setShowRefMenu(!showRefMenu)}
+                            className="text-gray-500 hover:text-cyan-400 p-1 rounded"
+                            title={t('uploadReference')}
                         >
-                            ✕
+                             <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
+                             </svg>
                         </button>
-                    </div>
-                ) : (
-                    <button
-                        onClick={() => fileInputRef.current?.click()}
-                        className="text-gray-500 hover:text-cyan-400 p-1 rounded"
-                        title={t('uploadReference')}
-                    >
-                         <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
-                         </svg>
-                    </button>
-                )}
+                    )}
+
+                    {/* Reference Selection Menu */}
+                    {showRefMenu && (
+                        <>
+                            {/* Backdrop to close */}
+                            <div className="fixed inset-0 z-40" onClick={() => setShowRefMenu(false)}></div>
+                            
+                            <div className="absolute right-0 top-8 z-50 bg-gray-800 border border-gray-600 rounded-lg shadow-xl w-48 p-2 space-y-2">
+                                <button 
+                                    className="w-full text-left text-xs text-white hover:bg-gray-700 p-1.5 rounded flex items-center gap-2"
+                                    onClick={() => { fileInputRef.current?.click(); setShowRefMenu(false); }}
+                                >
+                                    <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" /></svg>
+                                    {t('uploadReference')}
+                                </button>
+                                
+                                {globalReferences.length > 0 && (
+                                    <>
+                                        <div className="h-px bg-gray-700 my-1"></div>
+                                        <p className="text-[10px] text-gray-500 px-1">{t('selectFromLibrary')}:</p>
+                                        <div className="grid grid-cols-3 gap-1 max-h-24 overflow-y-auto custom-scrollbar">
+                                            {globalReferences.map(ref => (
+                                                <img 
+                                                    key={ref.id} 
+                                                    src={ref.url} 
+                                                    className="w-full aspect-square object-cover rounded cursor-pointer hover:border-teal-500 border border-transparent"
+                                                    onClick={() => {
+                                                        onSelectGlobalReference(element.id, ref.url);
+                                                        setShowRefMenu(false);
+                                                    }}
+                                                />
+                                            ))}
+                                        </div>
+                                    </>
+                                )}
+                            </div>
+                        </>
+                    )}
+                </div>
                 
                 <input 
                     type="file" 
@@ -423,6 +579,26 @@ const ElementItem: React.FC<{
                         }
                     }}
                 />
+
+                <div className="w-px h-3 bg-gray-700 mx-1"></div>
+
+                {/* Save to Library Button */}
+                <button 
+                    onClick={handleQuickSave}
+                    disabled={isSaved}
+                    className={`p-1 transition-colors ${isSaved ? 'text-green-500 cursor-default' : 'text-gray-500 hover:text-cyan-400'}`}
+                    title={isSaved ? t('saved') : t('saveToLibrary')}
+                >
+                    {isSaved ? (
+                        <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                        </svg>
+                    ) : (
+                        <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7H5a2 2 0 00-2 2v9a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-3m-1 4l-3 3m0 0l-3-3m3 3V4" />
+                        </svg>
+                    )}
+                </button>
 
                 <div className="w-px h-3 bg-gray-700 mx-1"></div>
 
@@ -468,6 +644,13 @@ const Controls: React.FC<ControlsProps> = ({
   savedCharacters,
   onSaveCharacter,
   onDeleteSavedCharacter,
+
+  // Reference Props
+  globalReferences,
+  onAddGlobalReference,
+  onDeleteGlobalReference,
+  onSelectGlobalReferenceForElement,
+
   selectedElementId,
   onSelectElement,
   language
@@ -526,7 +709,7 @@ const Controls: React.FC<ControlsProps> = ({
         </div>
       </div>
 
-      {/* 3. Enhancements */}
+      {/* 3. Enhancements (Realism Checkbox Removed) */}
       <div className="flex flex-wrap gap-4">
         <label className="flex items-center space-x-2 cursor-pointer group">
           <input 
@@ -546,16 +729,6 @@ const Controls: React.FC<ControlsProps> = ({
             className="w-4 h-4 rounded border-gray-600 text-teal-500 focus:ring-teal-500 bg-gray-700" 
           />
           <span className="text-sm text-gray-300 group-hover:text-teal-400">{t('landscaping')}</span>
-        </label>
-
-        <label className="flex items-center space-x-2 cursor-pointer group">
-          <input 
-            type="checkbox" 
-            checked={enhanceRealism} 
-            onChange={(e) => setEnhanceRealism(e.target.checked)}
-            className="w-4 h-4 rounded border-gray-600 text-teal-500 focus:ring-teal-500 bg-gray-700" 
-          />
-          <span className="text-sm text-gray-300 group-hover:text-teal-400">{t('enhanceRealism')}</span>
         </label>
       </div>
 
@@ -619,6 +792,9 @@ const Controls: React.FC<ControlsProps> = ({
           onSave={onSaveCharacter}
           onDeleteSaved={onDeleteSavedCharacter}
           language={language}
+          globalReferences={globalReferences}
+          onAddGlobalReference={onAddGlobalReference}
+          onDeleteGlobalReference={onDeleteGlobalReference}
         />
 
         {/* Active Elements List */}
@@ -636,6 +812,10 @@ const Controls: React.FC<ControlsProps> = ({
                 onUpdateTemperature={onUpdateElementTemperature}
                 onUpdatePose={onUpdateElementPose}
                 onUpdateLightingPosition={onUpdateElementLightingPosition}
+                globalReferences={globalReferences}
+                onSelectGlobalReference={onSelectGlobalReferenceForElement}
+                savedCharacters={savedCharacters}
+                onSaveCharacter={onSaveCharacter}
                 t={t}
               />
             ))}
