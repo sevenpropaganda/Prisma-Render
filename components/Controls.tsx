@@ -435,8 +435,9 @@ const ElementItem: React.FC<{
     return (
         <div 
             onClick={onSelect}
-            className={`flex items-center justify-between text-sm py-1.5 border-b border-gray-700/50 last:border-0 group px-2 rounded transition-colors cursor-pointer
+            className={`flex items-center justify-between text-sm py-1.5 border-b border-gray-700/50 last:border-0 group px-2 rounded transition-colors cursor-pointer relative
                 ${isSelected ? 'bg-teal-900/40 border border-teal-500/50' : 'text-gray-300 hover:bg-white/5 border-transparent'}
+                ${showRefMenu ? 'z-50' : 'z-auto'}
             `}
         >
             <span className="flex items-center gap-2 truncate pr-2 flex-1">
@@ -799,7 +800,7 @@ const Controls: React.FC<ControlsProps> = ({
 
         {/* Active Elements List */}
         {sceneElements.length > 0 && (
-          <div className="mt-2 bg-black/20 rounded-md p-2 max-h-40 overflow-y-auto custom-scrollbar flex flex-col gap-1">
+          <div className="mt-2 bg-black/20 rounded-md p-2 flex flex-col gap-1">
             {sceneElements.map(el => (
               <ElementItem 
                 key={el.id} 
