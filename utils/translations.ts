@@ -1,4 +1,5 @@
 
+
 import { Language } from '../types';
 
 export const translations = {
@@ -67,6 +68,8 @@ export const translations = {
     removeReference: 'Remover referência',
     replaceReference: 'Substituir referência',
     removeElement: 'Remover objeto',
+    duplicateElement: 'Duplicar objeto',
+    editName: 'Editar nome',
     colorTemperature: 'Temperatura de Cor (Kelvin)',
     pose: 'Posición',
     auto: 'Auto',
@@ -236,6 +239,8 @@ export const translations = {
     removeReference: 'Remove reference',
     replaceReference: 'Replace reference',
     removeElement: 'Remove object',
+    duplicateElement: 'Duplicate object',
+    editName: 'Edit name',
     colorTemperature: 'Color Temperature (Kelvin)',
     pose: 'Pose',
     auto: 'Auto',
@@ -391,6 +396,8 @@ export const translations = {
     removeReference: 'Eliminar referencia',
     replaceReference: 'Reemplazar referencia',
     removeElement: 'Eliminar objeto',
+    duplicateElement: 'Duplicar objeto',
+    editName: 'Editar nombre',
     colorTemperature: 'Temperatura de Color (Kelvin)',
     pose: 'Posición',
     auto: 'Auto',

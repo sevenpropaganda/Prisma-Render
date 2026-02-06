@@ -1,6 +1,6 @@
 
 
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { generateVideoFromImage, renderArchitecturalImage } from './services/geminiService';
 import { fileToBase64, base64ToFile } from './utils/fileUtils';
 import { getTranslation } from './utils/translations';
@@ -40,6 +40,11 @@ const App: React.FC = () => {
   const [mode, setMode] = useState<GenerationMode>('image');
   // Video Lock State
   const [isVideoUnlocked, setIsVideoUnlocked] = useState<boolean>(false);
+  
+  // Unlock Modal State
+  const [showUnlockModal, setShowUnlockModal] = useState<boolean>(false);
+  const [unlockInput, setUnlockInput] = useState<string>('');
+  const [unlockError, setUnlockError] = useState<boolean>(false);
   
   const [uploadedImage, setUploadedImage] = useState<File | null>(null);
   const [imagePreview, setImagePreview] = useState<string | null>(null);
@@ -130,23 +135,36 @@ const App: React.FC = () => {
 
   const handleVideoModeClick = () => {
       if (isVideoUnlocked) {
-          setMode('video');
-          if (aspectRatio !== '9:16') {
-             setAspectRatio('16:9');
+          switchToVideoMode();
+      } else {
+          setShowUnlockModal(true);
+          setUnlockInput('');
+          setUnlockError(false);
+      }
+  };
+
+  const switchToVideoMode = () => {
+      setMode('video');
+      if (imageDimensions) {
+          // Auto-detect orientation for Veo (16:9 or 9:16)
+          if (imageDimensions.height > imageDimensions.width) {
+              setAspectRatio('9:16');
+          } else {
+              setAspectRatio('16:9');
           }
       } else {
-          const input = window.prompt(t('enterPasscode'));
-          if (input === UNLOCK_CODE) {
-              setIsVideoUnlocked(true);
-              setMode('video');
-              if (aspectRatio !== '9:16') {
-                setAspectRatio('16:9');
-             }
-          } else {
-              if (input !== null) { // Only show error if not cancelled
-                  alert(t('passcodeIncorrect'));
-              }
-          }
+          setAspectRatio('16:9');
+      }
+  };
+
+  const handleUnlockSubmit = (e: React.FormEvent) => {
+      e.preventDefault();
+      if (unlockInput === UNLOCK_CODE) {
+          setIsVideoUnlocked(true);
+          setShowUnlockModal(false);
+          switchToVideoMode();
+      } else {
+          setUnlockError(true);
       }
   };
 
@@ -286,6 +304,33 @@ const App: React.FC = () => {
     }
   };
 
+  const handleDuplicateElement = (id: string) => {
+    const el = sceneElements.find(e => e.id === id);
+    if (!el) return;
+
+    saveHistory();
+
+    const offset = 2; // Offset by 2% so it doesn't perfectly overlap
+    const newEl: SceneElement = {
+        ...el,
+        id: Date.now().toString() + Math.random().toString(),
+        x: Math.min(el.x + offset, 100),
+        y: Math.min(el.y + offset, 100),
+    };
+
+    if (newEl.endX !== undefined) newEl.endX = Math.min(newEl.endX + offset, 100);
+    if (newEl.endY !== undefined) newEl.endY = Math.min(newEl.endY + offset, 100);
+    if (newEl.points) {
+        newEl.points = newEl.points.map(p => ({ 
+            x: Math.min(p.x + offset, 100), 
+            y: Math.min(p.y + offset, 100) 
+        }));
+    }
+
+    setSceneElements(prev => [...prev, newEl]);
+    setSelectedElementId(newEl.id);
+  };
+
   const handleDrawComplete = (start: {x: number, y: number}, end: {x: number, y: number}, points?: {x: number, y: number}[]) => {
     if (!activeDrawingTool) return;
     
@@ -354,6 +399,14 @@ const App: React.FC = () => {
       setSceneElements(prev => prev.map(el => 
         el.id === id ? { ...el, lightingPosition: position } : el
       ));
+  };
+
+  const handleUpdateElementDescription = (id: string, newDescription: string) => {
+    if (!newDescription.trim()) return;
+    saveHistory();
+    setSceneElements(prev => prev.map(el => 
+        el.id === id ? { ...el, subtype: newDescription } : el
+    ));
   };
 
   const handleInteractionStart = () => {
@@ -475,16 +528,23 @@ const App: React.FC = () => {
 
     // Video Duration for Prompt
     if (mode === 'video') {
-       const duration = videoDuration === 'custom' ? customDuration : videoDuration;
-       if (duration) {
-         enhancements.push(`Video duration: approximately ${duration} seconds`);
-       }
+       enhancements.push("Cinematic camera movement, high quality architectural animation");
     }
 
     return `${finalPrompt}. ${enhancements.join('. ')}. High quality, photorealistic, 8k.`;
   };
 
   const resolveAspectRatio = (): AspectRatio => {
+    // If in video mode, we MUST return 16:9 or 9:16
+    if (mode === 'video') {
+        if (aspectRatio === '16:9' || aspectRatio === '9:16') return aspectRatio;
+        // Fallback calculation for video
+        if (imageDimensions && imageDimensions.height > imageDimensions.width) {
+            return '9:16';
+        }
+        return '16:9';
+    }
+
     if (aspectRatio !== 'Original') return aspectRatio;
     if (imageDimensions) {
       const ratio = imageDimensions.width / imageDimensions.height;
@@ -609,14 +669,10 @@ const App: React.FC = () => {
     
     let targetVideoRatio: AspectRatio = '16:9';
     if (mode === 'video') {
-       if (resolvedRatio === '16:9' || resolvedRatio === '9:16') {
-         targetVideoRatio = resolvedRatio;
+       if (resolvedRatio === '9:16') {
+         targetVideoRatio = '9:16';
        } else {
-         if (imageDimensions && imageDimensions.height > imageDimensions.width) {
-            targetVideoRatio = '9:16';
-         } else {
-            targetVideoRatio = '16:9';
-         }
+         targetVideoRatio = '16:9';
        }
     }
 
@@ -863,7 +919,56 @@ const App: React.FC = () => {
   }
 
   return (
-    <div className="min-h-screen bg-gray-950 text-gray-100 font-sans selection:bg-teal-500 selection:text-white">
+    <div className="min-h-screen bg-gray-950 text-gray-100 font-sans selection:bg-teal-500 selection:text-white relative">
+      
+      {/* Unlock Modal */}
+      {showUnlockModal && (
+        <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/80 backdrop-blur-sm p-4 animate-fade-in">
+            <div className="bg-gray-800 border border-gray-600 rounded-2xl p-6 w-full max-w-sm shadow-2xl">
+                <div className="flex items-center justify-between mb-4">
+                    <h3 className="text-lg font-bold text-white flex items-center gap-2">
+                        <svg className="w-5 h-5 text-teal-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" />
+                        </svg>
+                        {t('videoMode')}
+                    </h3>
+                    <button onClick={() => setShowUnlockModal(false)} className="text-gray-400 hover:text-white">✕</button>
+                </div>
+                
+                <p className="text-sm text-gray-300 mb-4">
+                    {t('enterPasscode')}
+                </p>
+
+                <form onSubmit={handleUnlockSubmit} className="space-y-4">
+                    <input 
+                        type="password" 
+                        value={unlockInput}
+                        onChange={(e) => {
+                            setUnlockInput(e.target.value);
+                            setUnlockError(false);
+                        }}
+                        className={`w-full bg-gray-900 border rounded-lg p-2.5 text-white focus:outline-none focus:ring-2 transition-all ${unlockError ? 'border-red-500 focus:ring-red-500/50' : 'border-gray-600 focus:border-teal-500 focus:ring-teal-500/50'}`}
+                        placeholder="••••••••"
+                        autoFocus
+                    />
+                    
+                    {unlockError && (
+                        <p className="text-xs text-red-400 font-medium">
+                            {t('passcodeIncorrect')}
+                        </p>
+                    )}
+
+                    <button 
+                        type="submit"
+                        className="w-full bg-gradient-to-r from-teal-600 to-cyan-600 hover:from-teal-500 hover:to-cyan-500 text-white font-bold py-2.5 rounded-lg shadow-lg"
+                    >
+                        {t('confirm')}
+                    </button>
+                </form>
+            </div>
+        </div>
+      )}
+
       <main className="container mx-auto p-4 md:p-8 max-w-7xl">
         <Header 
           language={language} 
@@ -962,6 +1067,7 @@ const App: React.FC = () => {
               sceneElements={sceneElements}
               onAddElement={handleAddElement}
               onRemoveElement={handleRemoveElement}
+              onDuplicateElement={handleDuplicateElement}
               
               onUpdateElementReferenceImage={handleUpdateElementReferenceImage}
               onRemoveElementReferenceImage={handleRemoveElementReferenceImage}
@@ -969,6 +1075,7 @@ const App: React.FC = () => {
               onUpdateElementTemperature={handleUpdateElementTemperature}
               onUpdateElementPose={handleUpdateElementPose}
               onUpdateElementLightingPosition={handleUpdateLightingPosition}
+              onUpdateElementDescription={handleUpdateElementDescription}
 
               savedCharacters={savedCharacters}
               onSaveCharacter={handleSaveCharacter}

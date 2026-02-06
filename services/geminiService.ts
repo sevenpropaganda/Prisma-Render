@@ -1,4 +1,6 @@
 
+
+
 import { GoogleGenAI } from "@google/genai";
 import type { AspectRatio } from "../types";
 
@@ -48,12 +50,14 @@ export const generateVideoFromImage = async (
 ): Promise<string> => {
   const ai = getAiClient();
 
-  let validAspectRatio = aspectRatio;
-  if (aspectRatio !== '16:9' && aspectRatio !== '9:16') {
-     validAspectRatio = '16:9'; 
+  // Enforce Veo requirements strictly: 16:9 or 9:16
+  let validAspectRatio: '16:9' | '9:16' = '16:9'; 
+  if (aspectRatio === '9:16') {
+     validAspectRatio = '9:16'; 
   }
+  // All other ratios default to 16:9 for Veo compatibility
 
-  console.log("Starting video generation...");
+  console.log("Starting video generation...", { prompt, aspectRatio: validAspectRatio });
 
   // Wrap the initial generation request in retry logic
   let operation = await retryWithBackoff(

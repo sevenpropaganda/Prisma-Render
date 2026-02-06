@@ -57,11 +57,13 @@ interface ControlsProps {
   sceneElements: SceneElement[];
   onAddElement: (type: ElementType, subtype: string, initialPos?: {x: number, y: number}) => void;
   onRemoveElement: (id: string) => void;
+  onDuplicateElement: (id: string) => void;
   onUpdateElementReferenceImage: (id: string, file: File) => void;
   onRemoveElementReferenceImage: (id: string) => void;
   onUpdateElementTemperature: (id: string, temp: number) => void;
   onUpdateElementPose: (id: string, pose: Pose) => void;
   onUpdateElementLightingPosition: (id: string, position: LightingPosition) => void;
+  onUpdateElementDescription: (id: string, desc: string) => void;
 
   // Library Props
   savedCharacters: SavedCharacter[];
@@ -349,19 +351,25 @@ const ElementItem: React.FC<{
     isSelected: boolean;
     onSelect: () => void;
     onRemove: (id: string) => void;
+    onDuplicate: (id: string) => void;
     onUpdateImage: (id: string, file: File) => void;
     onRemoveImage: (id: string) => void;
     onUpdateTemperature: (id: string, temp: number) => void;
     onUpdatePose: (id: string, pose: Pose) => void;
     onUpdateLightingPosition: (id: string, pos: LightingPosition) => void;
+    onUpdateDescription: (id: string, desc: string) => void;
     globalReferences: GlobalReference[];
     onSelectGlobalReference: (elId: string, url: string) => void;
     savedCharacters: SavedCharacter[];
     onSaveCharacter: (name: string, type: ElementType, description: string, referenceImage?: string) => void;
     t: (key: string) => string;
-}> = ({ element, isSelected, onSelect, onRemove, onUpdateImage, onRemoveImage, onUpdateTemperature, onUpdatePose, onUpdateLightingPosition, globalReferences, onSelectGlobalReference, savedCharacters, onSaveCharacter, t }) => {
+}> = ({ element, isSelected, onSelect, onRemove, onDuplicate, onUpdateImage, onRemoveImage, onUpdateTemperature, onUpdatePose, onUpdateLightingPosition, onUpdateDescription, globalReferences, onSelectGlobalReference, savedCharacters, onSaveCharacter, t }) => {
     const fileInputRef = useRef<HTMLInputElement>(null);
     const [showRefMenu, setShowRefMenu] = useState(false);
+    
+    // Edit state
+    const [isEditing, setIsEditing] = useState(false);
+    const [editValue, setEditValue] = useState(element.subtype);
 
     // Check if this specific configuration is already saved
     // We check type, description (subtype), and reference image equality
@@ -378,6 +386,20 @@ const ElementItem: React.FC<{
         // Auto-generate name based on subtype and date
         const name = `${element.subtype} ${new Date().toLocaleTimeString()}`;
         onSaveCharacter(name, element.type, element.subtype, element.referenceImage);
+    };
+
+    const handleSaveEdit = () => {
+        if (editValue.trim()) {
+            onUpdateDescription(element.id, editValue);
+        } else {
+            setEditValue(element.subtype); // Revert if empty
+        }
+        setIsEditing(false);
+    };
+
+    const handleCancelEdit = () => {
+        setEditValue(element.subtype);
+        setIsEditing(false);
     };
 
     const getIcon = (type: string) => {
@@ -444,7 +466,39 @@ const ElementItem: React.FC<{
                 <span className={`${isSelected ? 'text-yellow-400' : 'text-teal-400'}`}>
                    {getIcon(element.type)}
                 </span>
-                <span className={`truncate ${isSelected ? 'text-white font-medium' : ''}`} title={element.subtype}>{t(element.subtype)}</span>
+                
+                {isEditing ? (
+                    <div className="flex items-center gap-1 flex-1 min-w-0 mr-2" onClick={e => e.stopPropagation()}>
+                        <input
+                            type="text"
+                            value={editValue}
+                            onChange={(e) => setEditValue(e.target.value)}
+                            onKeyDown={(e) => {
+                                if (e.key === 'Enter') handleSaveEdit();
+                                if (e.key === 'Escape') handleCancelEdit();
+                            }}
+                            autoFocus
+                            className="w-full bg-gray-900 border border-teal-500 rounded px-1.5 py-0.5 text-xs text-white focus:outline-none"
+                        />
+                         <button onClick={handleSaveEdit} className="text-green-400 hover:text-green-300">
+                             <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" /></svg>
+                         </button>
+                         <button onClick={handleCancelEdit} className="text-red-400 hover:text-red-300">
+                             <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" /></svg>
+                         </button>
+                    </div>
+                ) : (
+                    <span 
+                        className={`truncate ${isSelected ? 'text-white font-medium' : ''}`} 
+                        title={element.subtype}
+                        onDoubleClick={(e) => {
+                             e.stopPropagation();
+                             setIsEditing(true);
+                        }}
+                    >
+                        {t(element.subtype)}
+                    </span>
+                )}
             </span>
 
             <div className="flex items-center gap-2" onClick={(e) => e.stopPropagation()}>
@@ -583,7 +637,36 @@ const ElementItem: React.FC<{
 
                 <div className="w-px h-3 bg-gray-700 mx-1"></div>
 
+                 {/* Edit Name Button (Only if not editing) */}
+                 {!isEditing && (
+                    <button
+                        onClick={(e) => { e.stopPropagation(); setIsEditing(true); }}
+                        className="text-gray-500 hover:text-cyan-400 p-1 transition-colors"
+                        title={t('editName')}
+                    >
+                        <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
+                        </svg>
+                    </button>
+                )}
+
+                {/* Duplicate Button */}
+                {!isEditing && (
+                <button
+                    onClick={(e) => { e.stopPropagation(); onDuplicate(element.id); }}
+                    className="text-gray-500 hover:text-teal-400 p-1 transition-colors"
+                    title={t('duplicateElement')}
+                >
+                    <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z" />
+                    </svg>
+                </button>
+                )}
+
+                <div className="w-px h-3 bg-gray-700 mx-1"></div>
+
                 {/* Save to Library Button */}
+                {!isEditing && (
                 <button 
                     onClick={handleQuickSave}
                     disabled={isSaved}
@@ -600,9 +683,11 @@ const ElementItem: React.FC<{
                         </svg>
                     )}
                 </button>
+                )}
 
                 <div className="w-px h-3 bg-gray-700 mx-1"></div>
 
+                {!isEditing && (
                 <button 
                     onClick={(e) => { e.stopPropagation(); onRemove(element.id); }}
                     className="text-gray-500 hover:text-red-400 p-1 transition-colors"
@@ -610,6 +695,7 @@ const ElementItem: React.FC<{
                 >
                     ✕
                 </button>
+                )}
             </div>
         </div>
     );
@@ -637,11 +723,13 @@ const Controls: React.FC<ControlsProps> = ({
   sceneElements,
   onAddElement,
   onRemoveElement,
+  onDuplicateElement,
   onUpdateElementReferenceImage,
   onRemoveElementReferenceImage,
   onUpdateElementTemperature,
   onUpdateElementPose,
   onUpdateElementLightingPosition,
+  onUpdateElementDescription,
   savedCharacters,
   onSaveCharacter,
   onDeleteSavedCharacter,
@@ -808,11 +896,13 @@ const Controls: React.FC<ControlsProps> = ({
                 isSelected={selectedElementId === el.id}
                 onSelect={() => onSelectElement(el.id)}
                 onRemove={onRemoveElement} 
+                onDuplicate={onDuplicateElement}
                 onUpdateImage={onUpdateElementReferenceImage}
                 onRemoveImage={onRemoveElementReferenceImage}
                 onUpdateTemperature={onUpdateElementTemperature}
                 onUpdatePose={onUpdateElementPose}
                 onUpdateLightingPosition={onUpdateElementLightingPosition}
+                onUpdateDescription={onUpdateElementDescription}
                 globalReferences={globalReferences}
                 onSelectGlobalReference={onSelectGlobalReferenceForElement}
                 savedCharacters={savedCharacters}
